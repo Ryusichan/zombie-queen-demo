@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#2e243a">
+  <title>Zombie Queen</title>
+  <style>
+    /* 세로 시연용: 모바일은 화면 전체, 데스크톱은 9:16 캔버스를 가운데에 */
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #1b1424; overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none; }
+    #unity-container { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+    #unity-canvas { background: #2e243a; width: 100%; height: 100%; display: block; }
+    body.desktop #unity-canvas { width: min(100vw, calc(100vh * 9 / 16)); height: min(100vh, calc(100vw * 16 / 9)); }
+    #unity-loading { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); color: #f48fb1; font: 14px/1.6 sans-serif; text-align: center; letter-spacing: 2px; }
+    #unity-progress { width: 180px; height: 6px; background: rgba(255,255,255,0.12); margin: 10px auto 0; border-radius: 3px; overflow: hidden; }
+    #unity-progress > div { width: 0; height: 100%; background: #f48fb1; }
+    #unity-warning { position: fixed; left: 50%; bottom: 8%; transform: translateX(-50%); color: #fff; background: rgba(0,0,0,0.6); padding: 8px 12px; border-radius: 6px; font: 12px sans-serif; display: none; }
+  </style>
+</head>
+<body>
+  <div id="unity-container">
+    <canvas id="unity-canvas" tabindex="-1"></canvas>
+  </div>
+  <div id="unity-loading">ZOMBIE QUEEN<div id="unity-progress"><div></div></div></div>
+  <div id="unity-warning"></div>
+  <script src="Build/WebGL.loader.js"></script>
+  <script>
+    var canvas = document.querySelector("#unity-canvas");
+    var mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    if (!mobile) document.body.classList.add("desktop");
+    var config = {
+      arguments: [],
+      dataUrl: "Build/WebGL.data",
+      frameworkUrl: "Build/WebGL.framework.js",
+      codeUrl: "Build/WebGL.wasm",
+      streamingAssetsUrl: "StreamingAssets",
+      companyName: "ryu",
+      productName: "Zombie Queen",
+      productVersion: "1.0",
+      showBanner: function (msg, type) {
+        var w = document.querySelector("#unity-warning");
+        w.style.display = "block"; w.textContent = msg;
+        if (type !== "error") setTimeout(function () { w.style.display = "none"; }, 5000);
+      },
+    };
+    // 모바일: DPR 그대로 쓰면 GPU 부담이 커서 1.5 로 제한
+    config.devicePixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
+    var bar = document.querySelector("#unity-progress > div");
+    createUnityInstance(canvas, config, function (p) { bar.style.width = (100 * p) + "%"; }).then(function () {
+      document.querySelector("#unity-loading").style.display = "none";
+    }).catch(function (m) { alert(m); });
+  </script>
+</body>
+</html>
