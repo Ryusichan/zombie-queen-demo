@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#2e243a">
+  <title>Zombie Queen</title>
+  <style>
+    /* 세로 시연용: 모바일은 화면 전체, 데스크톱은 9:16 캔버스를 가운데에 */
+    /* 오너 2026-09-17: 어떤 기기든 위아래가 잘리지 않게 — 브라우저 툴바를 뺀 작은 뷰포트(svh) + 노치/홈바 안전 영역(env) 만큼 안쪽으로 */
+    /* 오너 2026-09-18 "위아래 검정색 없이 풀로 꽉차게": 안전영역 여백을 빼고 화면 끝까지 채운다.
+       노치/홈바 회피는 게임 안 SafeArea(Hud) 가 담당한다. 높이는 dvh(툴바가 접히면 같이 커진다) → svh → vh 순으로 폴백 */
+    html, body { margin: 0; padding: 0; width: 100%; height: 100vh; height: 100svh; height: 100dvh; background: #1b1424; overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none; }
+    #unity-container { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; box-sizing: border-box; padding: 0; }
+    /* 캔버스에도 `touch-action: none` 이 **따로** 있어야 한다 — 이 속성은 상속되지 않는다.
+       body 에만 두면 캔버스는 기본값(auto)이고, iOS 사파리는 `user-scalable=no` 를 무시하므로(iOS 10~)
+       캔버스 위 터치를 확대·스크롤 제스처 후보로 붙잡아 둔다. 그러면 탭이 게임에 안 들어간다
+       (2026-09-24 오너 아이폰: 로그인 버튼이 전혀 안 눌렸다). */
+    #unity-canvas { background: #2e243a; width: 100%; height: 100%; display: block;
+                    touch-action: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+    body.desktop #unity-canvas { width: min(100vw, calc(100vh * 9 / 16)); height: min(100vh, calc(100vw * 16 / 9)); }
+    #unity-loading { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); color: #f48fb1; font: 14px/1.6 sans-serif; text-align: center; letter-spacing: 2px; }
+    #unity-progress { width: 180px; height: 6px; background: rgba(255,255,255,0.12); margin: 10px auto 0; border-radius: 3px; overflow: hidden; }
+    #unity-progress > div { width: 0; height: 100%; background: #f48fb1; }
+    /* 오른쪽 아래 작은 버전 — 어떤 빌드를 보고 있는지 눈으로 안다. 캐시에 옛 페이지가 남으면
+       고친 것을 안 고쳐진 상태로 시험하게 되는데, 이 글자가 그걸 막는다 (오너 2026-09-24).
+       탭 수를 같이 세는 이유: 클릭이 안 될 때 **브라우저가 캔버스에 이벤트를 주는지**가 먼저다.
+       숫자가 오르면 브라우저는 주고 있고 문제는 게임 안, 안 오르면 브라우저가 안 준 것이다. */
+    #zq-ver { position: fixed; right: 6px; bottom: 6px; z-index: 10; color: rgba(255,255,255,0.45);
+              font: 10px/1.2 -apple-system, sans-serif; text-align: right; pointer-events: none;
+              text-shadow: 0 1px 2px rgba(0,0,0,0.6); }
+    #unity-warning { position: fixed; left: 50%; bottom: 8%; transform: translateX(-50%); color: #fff; background: rgba(0,0,0,0.6); padding: 8px 12px; border-radius: 6px; font: 12px sans-serif; display: none; }
+  </style>
+</head>
+<body>
+  <div id="unity-container">
+    <canvas id="unity-canvas" tabindex="-1"></canvas>
+  </div>
+  <div id="unity-loading">ZOMBIE QUEEN<div id="unity-progress"><div></div></div></div>
+  <div id="unity-warning"></div>
+  <div id="zq-ver">1.2.05</div>
+  <script src="Build/WebGL.loader.js?v=5897f08"></script>
+  <script>
+    var canvas = document.querySelector("#unity-canvas");
+    // 모바일 판정: UA 만 믿으면 데스크톱 모드/iPadOS 가 9:16 상자로 떨어져 위아래 여백이 생긴다 → 터치 포인터/터치 포인트로도 본다
+    var mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || (navigator.maxTouchPoints || 0) > 1 || (window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
+    if (!mobile) document.body.classList.add("desktop");
+    var config = {
+      arguments: [],
+      dataUrl: "Build/WebGL.data.unityweb?v=5897f08",
+      frameworkUrl: "Build/WebGL.framework.js.unityweb?v=5897f08",
+      codeUrl: "Build/WebGL.wasm.unityweb?v=5897f08",
+      streamingAssetsUrl: "StreamingAssets",
+      companyName: "ryu",
+      productName: "Zombie Queen",
+      productVersion: "1.0",
+      showBanner: function (msg, type) {
+        var w = document.querySelector("#unity-warning");
+        w.style.display = "block"; w.textContent = msg;
+        if (type !== "error") setTimeout(function () { w.style.display = "none"; }, 5000);
+      },
+    };
+    // 화면 배율. **1.5 로 묶어 두면 글자가 뭉개진다** — 아이폰은 DPR 3 이라 절반 해상도로 그린 뒤
+    // 브라우저가 2 배로 늘린다. 늘어난 것은 그림보다 글자에서 먼저 보이고, 특히 한글 받침이 뭉갠다
+    // (오너가 2026-09-18 · 09-24 두 번 "글자 끝이 흐려서 뭔지 모르겠다" 고 했다).
+    // 에디터에서 1080x2160 으로 찍은 화면은 또렷하다 — 흐림은 웹에서만 생기고, 여기가 원인이다.
+    // 2 로 올린다: 1.5 대비 픽셀이 1.8 배지만 이 게임은 화면이 단순해서 감당한다.
+    // 더 또렷하게 하려면 상한을 3(=그대로)으로, 프레임이 부족하면 1.75 로 — 여기 한 숫자다.
+    config.devicePixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+    config.matchWebGLToCanvasSize = true;   // 캔버스 CSS 크기에 렌더 버퍼를 맞춘다 — 안 맞으면 위아래에 검은 띠가 생긴다
+    // 주소창이 접히거나 화면이 돌아갈 때 캔버스를 다시 채운다
+    function fill() {
+      var c = document.querySelector("#unity-canvas");
+      c.style.width = "100%"; c.style.height = "100%";
+    }
+    window.addEventListener("resize", fill);
+    window.addEventListener("orientationchange", function () { setTimeout(fill, 200); });
+    fill();
+    // 탭이 캔버스까지 오는지 센다. 이벤트를 **가로채지 않는다** (capture + passive) — 세기만 하고 그대로 흘린다
+    (function () {
+      var v = document.querySelector("#zq-ver"), base = v.textContent, taps = 0;
+      function count() { taps++; v.textContent = base + " · tap " + taps; }
+      ["pointerdown", "touchstart", "mousedown"].forEach(function (e) {
+        window.addEventListener(e, count, { capture: true, passive: true });
+      });
+    })();
+    var bar = document.querySelector("#unity-progress > div");
+    createUnityInstance(canvas, config, function (p) { bar.style.width = (100 * p) + "%"; }).then(function () {
+      document.querySelector("#unity-loading").style.display = "none";
+    }).catch(function (m) { alert(m); });
+  </script>
+</body>
+</html>
